@@ -1,0 +1,122 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Radu-Ionel Toma"
+date: "11/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this project is to predict the manner in which they did the exercise. This is the `classe` variable in the training set.
+
+## Data description
+
+The outcome variable is `classe`, a factor variable with 5 levels. For this data set, participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+
+- exactly according to the specification (Class A)
+- throwing the elbows to the front (Class B)
+- lifting the dumbbell only halfway (Class C)
+- lowering the dumbbell only halfway (Class D)
+- throwing the hips to the front (Class E)
+
+## Methodology
+
+The problem was attempted using a *Random Forest* as the classifier and *Principal Component Analysis (PCA)* to reduce the dimensionality of the data as there were some highly consolatory variables.
+
+The `pml-training.csv` data is used to devise training and testing sets.
+The `pml-test.csv` data is used to predict and answer the 20 questions based on the trained model.
+
+## Initial configuration
+
+The initial configuration consists of loading required packages and initializing some variables.
+```{r configuration, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+# R-Packages
+library(caret)
+library(corrplot)
+library(randomForest)
+training.file   <- 'pml-training.csv'
+testing.file <- 'pml-testing.csv'
+training.url    <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+testing.url  <- 'http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+```
+
+## Data processing
+
+In this section the data is downloaded and processed. Some basic transformations and cleanup will be performed, so that `NA` values are omitted. Irrelevant columns such as `user_name`, `raw_timestamp_part_1`, `raw_timestamp_part_2`, `cvtd_timestamp`, `new_window`, and  `num_window` (columns 1 to 7) will be removed in the subset.
+
+The data was loaded using the following commands. The na.strings setting helps the removal of columns later by setting cells with empty space to be NA.
+```{r dataprocessing}
+# Download data
+download.file(training.url, training.file)
+download.file(testing.url,testing.file )
+# Clean data
+training<-read.csv(training.file, na.strings=c("NA","#DIV/0!", ""))
+testing <-read.csv(testing.file , na.strings=c("NA", "#DIV/0!", ""))
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
+# Subset data
+training   <-training[,-c(1:7)]
+testing <-testing[,-c(1:7)]
+```
+
+## Training data
+
+The next stage was to split the data into a training and validation set so that the performance could be estimated after the classifier had been trained. 
+```{r trainingdata}
+# Create training and testing data
+inTrain = createDataPartition(training$classe, p = 3/4)[[1]]
+training = training[ inTrain,]
+validation = training[-inTrain,]
+```
+
+After this a correlation matrix was plotted with the training data to assess if there were any highly correlated variables. The circles indicate the level of correlation between different variables and this shows that as there some with high correlation PCA could be used to reduce the dimensionality of the data. The figure is available in this directory under corrplot.png.
+```{r }
+# plot a correlation matrix
+correlMatrix <- cor(training[, -length(training)])
+#png("corrplot.png",width=480,height=480,units="px",bg="transparent")
+corrplot(correlMatrix, type = "lower", tl.cex = 0.8)
+```
+
+The next stage is to compute the random forest using the training data. The inclusion of pre-processing="pca" means that the data is pre-processed using PCA first.
+
+```{r }
+#Compute Random Forest with PCA to remove highly correlated variables
+training$classe = factor(training$classe)
+rf <- randomForest(Species ~ ., data=iris)
+randomForestFit <- randomForest(classe~., data=training, preprocessing="pca")
+print(randomForestFit)
+```
+
+## Validation data
+
+The validation data is then used with the model. The confusion matrix estimates the performance of the model on new data. This returns a highly accurate result and therefore indicates that random forest may be a good model for predicting this data as it has an accuracy of 100.0% with 95% confidence intervals of 0.999 and 1.000. The out of sample error is therefore 0.29%.
+
+The results of the confusion matrix command are as follows:
+```{r }
+rfResVal = predict(randomForestFit,validation)
+#Get an estimate of how well the model has been trained
+print ("RF - Cross Validataion"); 
+validation$classe = factor(validation$classe)
+confusionMatrix(validation$classe, rfResVal)
+accuracy = confusionMatrix(validation$classe, rfResVal)$overall['Accuracy'] 
+outOfSampleError = (1 - accuracy) * 100
+print("Out of sample error estimation: "); print(round(outOfSampleError, digits = 4))
+```
+
+## Testing data
+
+Finally, the new test data is loaded and the model is applied to make predictions. The classes are returned for each of the 20 rows.
+
+## Results
+
+```{r }
+# Application of the model to new data set
+rfResFinal = predict(randomForestFit,testing)
+print (rfResFinal)
+```
